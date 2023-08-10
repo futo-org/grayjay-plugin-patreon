@@ -1,0 +1,31 @@
+{
+	"name": "Patreon",
+	"description": "Patreon is a subscription platform allowing creators to release membership only content.",
+	"author": "FUTO",
+	"authorUrl": "https://futo.org",
+	
+	"sourceUrl": "https://plugins.grayjay.app/Patreon/PatreonConfig.json",
+	"repositoryUrl": "https://futo.org",
+	"scriptUrl": "./PatreonScript.js",
+	"version": 6,
+	
+	"iconUrl": "./patreon_logo.png",
+	"id": "aac9e9f0-24b5-11ee-be56-0242ac120002",
+	
+	"scriptSignature": "",
+	"scriptPublicKey": "",
+	"packages": ["Http","DOMParser"],
+	
+	"allowEval": false,
+	"allowUrls": [
+		"www.patreon.com",
+		"patreon.com"
+	],
+	
+	"authentication": {
+		"userAgent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.5481.153 Mobile Safari/537.36",
+		"loginUrl": "https://www.patreon.com/login",
+		"cookiesToFind": ["session_id"],
+		"cookiesExclOthers": false
+	}
+}
