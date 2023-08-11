@@ -105,7 +105,6 @@ class ChannelContentPager extends ContentPager {
 		const initialResults = getPosts(campaignId, channel);
 		super(initialResults.results, true);
 		this.nextPageUrl = initialResults.nextPage;
-		this.hasMore = !!this.nextPageUrl;
 		this.campaignId = campaignId;
 		this.channel = channel;
 	}
