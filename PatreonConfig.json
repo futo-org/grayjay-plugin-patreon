@@ -7,7 +7,7 @@
 	"sourceUrl": "https://plugins.grayjay.app/Patreon/PatreonConfig.json",
 	"repositoryUrl": "https://futo.org",
 	"scriptUrl": "./PatreonScript.js",
-	"version": 7,
+	"version": 6,
 	
 	"iconUrl": "./patreon_logo.png",
 	"id": "aac9e9f0-24b5-11ee-be56-0242ac120002",
