@@ -1,4 +1,5 @@
-const PLATFORM = "Sample";
+const PLATFORM = "Patreon";
+const PLATFORM_CLAIMTYPE = 12;
 
 const BASE_URL = "https://www.patreon.com";
 const BASE_URL_API = "https://www.patreon.com/api";
@@ -83,7 +84,7 @@ source.getChannel = function(url) {
 	const channel = JSON.parse(channelJson[1]);
 	
 	const result = new PlatformChannel({
-		id: new PlatformID(config.name, channel?.campaign?.data?.id, config.id),
+		id: new PlatformID(config.name, channel?.campaign?.data?.id, config.id, PLATFORM_CLAIMTYPE),
 		name: channel?.campaign?.data?.attributes?.name,
 		description: channel?.campaign?.data?.attributes?.description,
 		url: channel?.campaign?.data?.attributes?.url,
@@ -188,7 +189,7 @@ class PatreonCommentPager extends CommentPager {
 
 		return new PatreonComment({
 			contextUrl: this.contextUrl,
-			author: new PlatformAuthorLink(new PlatformID(config.platform, comment.id), commenter.attributes.full_name, commenter.attributes.url, commenter.attributes.image_url),
+			author: new PlatformAuthorLink(new PlatformID(config.platform, comment.id, PLATFORM_CLAIMTYPE), commenter.attributes.full_name, commenter.attributes.url, commenter.attributes.image_url),
 			message: comment.attributes.body,
 			rating: new RatingLikes(comment.attributes.vote_sum),
 			date: parseInt(Date.parse(comment.attributes.created) / 1000),
@@ -361,7 +362,7 @@ function getPosts(campaign, context, nextPage) {
 }
 
 function getPlatformAuthorLink(item, context) {
-	return new PlatformAuthorLink(new PlatformID(config.name, item?.relationships?.campaign?.data?.id, config.id),
+	return new PlatformAuthorLink(new PlatformID(config.name, item?.relationships?.campaign?.data?.id, config.id, PLATFORM_CLAIMTYPE),
 		context?.name,
 		context?.url,
 		context?.thumbnail,
@@ -382,7 +383,7 @@ function searchChannels(query, page) {
 	for(let item of data.data) {
 		const id = item.id;
 		if(id.startsWith("campaign_"))
-			channels.push(new PlatformAuthorLink(new PlatformID(config.name, id.substring("campaign_".length), config.id),
+			channels.push(new PlatformAuthorLink(new PlatformID(config.name, id.substring("campaign_".length), config.id, PLATFORM_CLAIMTYPE),
 				item.attributes.name, 
 				item.attributes.url, 
 				item.attributes.avatar_photo_url,
