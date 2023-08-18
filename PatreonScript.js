@@ -120,6 +120,15 @@ class ChannelContentPager extends ContentPager {
 	}
 }
 
+source.getChannelTemplateByClaimMap = () => {
+    return {
+        //Patreon
+        12: {
+            0: URL_BASE + "/{{CLAIMVALUE}}"
+        }
+    };
+};
+
 //Video
 source.isContentDetailsUrl = function(url) {
 	return REGEX_URL_ID.test(url);
