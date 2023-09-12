@@ -7,9 +7,10 @@ touch $DOCUMENT_ROOT/maintenance.file
 
 # Swap over the content
 echo "Deploying content..."
-cp patreon_logo.png $DOCUMENT_ROOT/
-cp PatreonConfig.json $DOCUMENT_ROOT/
-cp PatreonScript.js $DOCUMENT_ROOT/
+mkdir -p $DOCUMENT_ROOT/Patreon
+cp patreon_logo.png $DOCUMENT_ROOT/Patreon
+cp PatreonConfig.json $DOCUMENT_ROOT/Patreon
+cp PatreonScript.js $DOCUMENT_ROOT/Patreon
 
 # Notify Cloudflare to wipe the CDN cache
 echo "Purging Cloudflare cache..."
