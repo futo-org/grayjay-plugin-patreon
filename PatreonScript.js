@@ -8,6 +8,7 @@ const URL_POSTS = BASE_URL_API + "/posts";
 const URL_SEARCH_CREATORS = BASE_URL_API + "/search";
 
 const REGEX_CHANNEL_DETAILS = /Object\.assign\(window\.patreon\.bootstrap, ({.*?})\);/s
+const REGEX_CHANNEL_DETAILS2 = /window\.patreon = ({.*?});/s
 const REGEX_CHANNEL_URL = /https:\/\/(?:www\.)?patreon.com\/(.+)/s
 
 const REGEX_MEMBERSHIPS = /<ul aria-label="Memberships".*?>(.*?)<\/ul>/s
@@ -78,10 +79,23 @@ source.getChannel = function(url) {
 	if(!channelResp.isOk)
 		throw new ScriptException("Failed to get channel");
 
-	const channelJson = REGEX_CHANNEL_DETAILS.exec(channelResp.body);
-	if(!channelJson || channelJson.length != 2)
-		throw new ScriptException("Failed to extract channel");
-	const channel = JSON.parse(channelJson[1]);
+	let channelJson = REGEX_CHANNEL_DETAILS.exec(channelResp.body);
+	let channel = null;
+	if(!channelJson || channelJson.length != 2) {
+	    channelJson = REGEX_CHANNEL_DETAILS2.exec(channelResp.body);
+	    if(channelJson && channelJson.length == 2) {
+	        channel = JSON.parse(channelJson[1]);
+
+	        if(channel && channel.bootstrap)
+	            channel = channel.bootstrap;
+	        else
+		        throw new ScriptException("Failed to parse channel");
+	    }
+	    else
+		    throw new ScriptException("Failed to extract channel");
+	}
+	else
+	    channel = JSON.parse(channelJson[1]);
 	
 	const result = new PlatformChannel({
 		id: new PlatformID(config.name, channel?.campaign?.data?.id, config.id, PLATFORM_CLAIMTYPE),
