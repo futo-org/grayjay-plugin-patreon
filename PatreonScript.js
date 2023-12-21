@@ -9,6 +9,7 @@ const URL_SEARCH_CREATORS = BASE_URL_API + "/search";
 
 const REGEX_CHANNEL_DETAILS = /Object\.assign\(window\.patreon\.bootstrap, ({.*?})\);/s
 const REGEX_CHANNEL_DETAILS2 = /window\.patreon = ({.*?});/s
+const REGEX_CHANNEL_DETAILS3 = /id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s
 const REGEX_CHANNEL_URL = /https:\/\/(?:www\.)?patreon.com\/(.+)/s
 
 const REGEX_MEMBERSHIPS = /<ul aria-label="Memberships".*?>(.*?)<\/ul>/s
@@ -91,8 +92,17 @@ source.getChannel = function(url) {
 	        else
 		        throw new ScriptException("Failed to parse channel");
 	    }
-	    else
-		    throw new ScriptException("Failed to extract channel");
+	    else {
+	        channelJson = REGEX_CHANNEL_DETAILS3.exec(channelResp.body);
+	        if(channelJson && channelJson.length == 2) {
+	            const channelWrapperObj = JSON.parse(channelJson[1]);
+	            channel = channelWrapperObj?.props?.pageProps?.bootstrapEnvelope?.bootstrap
+                if(!channel)
+                    throw new ScriptException("Failed to parse channel");
+	        }
+	        else
+		        throw new ScriptException("Failed to extract channel");
+	    }
 	}
 	else
 	    channel = JSON.parse(channelJson[1]);
