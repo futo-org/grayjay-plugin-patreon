@@ -385,6 +385,29 @@ function getPosts(campaign, context, nextPage) {
 							])
 						}));
 					break;
+				case "audio_file":
+					if(item?.attributes?.post_file)
+						contents.push(new PlatformVideoDetails({
+							id: new PlatformID(config.name, item?.id, config.id),
+							name: item?.attributes?.title,
+							author: getPlatformAuthorLink(item, context),
+							datetime: (Date.parse(item?.attributes?.published_at) / 1000),
+							url: item?.attributes?.url,
+							duration: item?.attributes?.post_file?.duration,
+							description: item?.attributes?.teaser_text,
+							rating: new RatingLikes(item?.attributes?.like_count),
+							thumbnails: new Thumbnails([
+								new Thumbnail(item?.attributes?.thumbnail?.url, 1)
+							]),
+							video: new UnMuxVideoSourceDescriptor([], [
+								new AudioUrlSource({
+                                    name: "Audio",
+                                    url: item?.attributes?.post_file?.url,
+                                    duration: item?.attributes?.post_file?.duration
+                                })
+							])
+						}));
+				    break;
 			}
 		}
 		else {
