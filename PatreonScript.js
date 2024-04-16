@@ -17,6 +17,7 @@ const REGEX_MEMBERSHIPS_URLS = /<a href="(.*?)"/g
 const REGEX_URL_ID = /https:\/\/(?:www\.)?patreon.com\/posts\/.*-(.*)\/?/s
 
 var config = {};
+var _settings = {};
 
 let _channelCache = {};
 
@@ -24,6 +25,7 @@ let _channelCache = {};
 //Source Methods
 source.enable = function(conf, settings, savedState){
 	config = conf ?? {};
+	_settings = settings ?? {};
 	
 }
 source.getHome = function() {
@@ -411,19 +413,21 @@ function getPosts(campaign, context, nextPage) {
 			}
 		}
 		else {
-		    contents.push(new PlatformLockedContent({
-				id: new PlatformID(config.name, item?.id, config.id),
-				name: item?.attributes?.title,
-				author: getPlatformAuthorLink(item, context),
-				datetime: (Date.parse(item?.attributes?.published_at) / 1000),
-				url: item?.attributes?.url,
-				contentName: item?.attributes?.embed?.subject,
-				contentThumbnails: new Thumbnails([
-					new Thumbnail(item?.attributes?.thumbnail?.large ?? item?.attributes?.image?.thumb_url, 1)
-				].filter(x=>x.url)),
-				lockDescription: "Exclusive for members",
-				unlockUrl: item?.attributes?.url,
-			}));
+			if(!_settings?.hideUnpaidContent) {
+				contents.push(new PlatformLockedContent({
+					id: new PlatformID(config.name, item?.id, config.id),
+					name: item?.attributes?.title,
+					author: getPlatformAuthorLink(item, context),
+					datetime: (Date.parse(item?.attributes?.published_at) / 1000),
+					url: item?.attributes?.url,
+					contentName: item?.attributes?.embed?.subject,
+					contentThumbnails: new Thumbnails([
+						new Thumbnail(item?.attributes?.thumbnail?.large ?? item?.attributes?.image?.thumb_url, 1)
+					].filter(x=>x.url)),
+					lockDescription: "Exclusive for members",
+					unlockUrl: item?.attributes?.url,
+				}));
+			}
 		}
 	}
 	return {
