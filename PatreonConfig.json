@@ -3,11 +3,12 @@
 	"description": "Patreon is a subscription platform allowing creators to release membership only content.",
 	"author": "FUTO",
 	"authorUrl": "https://futo.org",
-	
+
+	"platformUrl": "https://patreon.com",
 	"sourceUrl": "https://plugins.grayjay.app/Patreon/PatreonConfig.json",
 	"repositoryUrl": "https://futo.org",
 	"scriptUrl": "./PatreonScript.js",
-	"version": 9,
+	"version": 15,
 	
 	"iconUrl": "./patreon_logo.png",
 	"id": "aac9e9f0-24b5-11ee-be56-0242ac120002",
@@ -20,6 +21,16 @@
 	"allowUrls": [
 		"www.patreon.com",
 		"patreon.com"
+	],
+
+	"settings": [
+		{
+			"variable": "hideUnpaidContent",
+			"name": "Hide unpaid content",
+			"description": "Hides content you do not have access for due to missing payment",
+			"type": "Boolean",
+			"default": "false"
+		}
 	],
 	
 	"authentication": {

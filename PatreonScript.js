@@ -8,7 +8,8 @@ const URL_POSTS = BASE_URL_API + "/posts";
 const URL_SEARCH_CREATORS = BASE_URL_API + "/search";
 
 const REGEX_CHANNEL_DETAILS = /Object\.assign\(window\.patreon\.bootstrap, ({.*?})\);/s
-const REGEX_CHANNEL_DETAILS2 = /id="__NEXT_DATA__".*?>(.*?)<\/script>/s
+const REGEX_CHANNEL_DETAILS2 = /window\.patreon = ({.*?});/s
+const REGEX_CHANNEL_DETAILS3 = /id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s
 const REGEX_CHANNEL_URL = /https:\/\/(?:www\.)?patreon.com\/(.+)/s
 
 const REGEX_MEMBERSHIPS = /<ul aria-label="Memberships".*?>(.*?)<\/ul>/s
@@ -16,6 +17,7 @@ const REGEX_MEMBERSHIPS_URLS = /<a href="(.*?)"/g
 const REGEX_URL_ID = /https:\/\/(?:www\.)?patreon.com\/posts\/.*-(.*)\/?/s
 
 var config = {};
+var _settings = {};
 
 let _channelCache = {};
 
@@ -23,6 +25,7 @@ let _channelCache = {};
 //Source Methods
 source.enable = function(conf, settings, savedState){
 	config = conf ?? {};
+	_settings = settings ?? {};
 	
 }
 source.getHome = function() {
@@ -80,20 +83,34 @@ source.getChannel = function(url) {
 		throw new ScriptException("Failed to get channel");
 
 	let channelJson = REGEX_CHANNEL_DETAILS.exec(channelResp.body);
-	let channel = undefined;
-	if(channelJson && channelJson.length == 2) {
-		channel = JSON.parse(channelJson[1]);
+
+	let channel = null;
+	if(!channelJson || channelJson.length != 2) {
+	    channelJson = REGEX_CHANNEL_DETAILS2.exec(channelResp.body);
+	    if(channelJson && channelJson.length == 2) {
+	        channel = JSON.parse(channelJson[1]);
+
+	        if(channel && channel.bootstrap)
+	            channel = channel.bootstrap;
+	        else
+		        throw new ScriptException("Failed to parse channel");
+	    }
+	    else {
+	        channelJson = REGEX_CHANNEL_DETAILS3.exec(channelResp.body);
+	        if(channelJson && channelJson.length == 2) {
+	            const channelWrapperObj = JSON.parse(channelJson[1]);
+	            channel = channelWrapperObj?.props?.pageProps?.bootstrapEnvelope?.bootstrap
+					?? channelWrapperObj?.props?.pageProps?.bootstrapEnvelope?.pageBootstrap;
+
+                if(!channel)
+                    throw new ScriptException("Failed to parse channel");
+	        }
+	        else
+		        throw new ScriptException("Failed to extract channel");
+	    }
 	}
-	if(!channel) {
-		channelJson = REGEX_CHANNEL_DETAILS2.exec(channelResp.body);
-		if(channelJson && channelJson.length == 2) {
-			channel = JSON.parse(channelJson[1]);
-			channel = channel?.props?.pageProps?.bootstrapEnvelope?.pageBootstrap;
-		}
-	}
-	
-	if(!channel) 
-		throw new ScriptException("Failed to extract channel");
+	else
+	    channel = JSON.parse(channelJson[1]);
 	
 	const result = new PlatformChannel({
 		id: new PlatformID(config.name, channel?.campaign?.data?.id, config.id, PLATFORM_CLAIMTYPE),
@@ -101,7 +118,7 @@ source.getChannel = function(url) {
 		description: channel?.campaign?.data?.attributes?.description,
 		url: channel?.campaign?.data?.attributes?.url,
 		subscribers: channel?.campaign?.data?.attributes?.patron_count,
-		banner: channel?.campaign?.data?.attributes?.image_url,
+		banner: channel?.campaign?.data?.attributes?.image_url ?? channel?.campaign?.data?.attributes?.cover_photo_url,
 		thumbnail: channel?.campaign?.data?.attributes?.avatar_photo_url
 	});
 
@@ -373,6 +390,46 @@ function getPosts(campaign, context, nextPage) {
 							])
 						}));
 					break;
+				case "audio_file":
+					if(item?.attributes?.post_file)
+						contents.push(new PlatformVideoDetails({
+							id: new PlatformID(config.name, item?.id, config.id),
+							name: item?.attributes?.title,
+							author: getPlatformAuthorLink(item, context),
+							datetime: (Date.parse(item?.attributes?.published_at) / 1000),
+							url: item?.attributes?.url,
+							duration: item?.attributes?.post_file?.duration,
+							description: item?.attributes?.teaser_text,
+							rating: new RatingLikes(item?.attributes?.like_count),
+							thumbnails: new Thumbnails([
+								new Thumbnail(item?.attributes?.thumbnail?.url, 1)
+							]),
+							video: new UnMuxVideoSourceDescriptor([], [
+								new AudioUrlSource({
+                                    name: "Audio",
+                                    url: item?.attributes?.post_file?.url,
+                                    duration: item?.attributes?.post_file?.duration
+                                })
+							])
+						}));
+				    break;
+			}
+		}
+		else {
+			if(!_settings?.hideUnpaidContent) {
+				contents.push(new PlatformLockedContent({
+					id: new PlatformID(config.name, item?.id, config.id),
+					name: item?.attributes?.title,
+					author: getPlatformAuthorLink(item, context),
+					datetime: (Date.parse(item?.attributes?.published_at) / 1000),
+					url: item?.attributes?.url,
+					contentName: item?.attributes?.embed?.subject,
+					contentThumbnails: new Thumbnails([
+						new Thumbnail(item?.attributes?.thumbnail?.large ?? item?.attributes?.image?.thumb_url, 1)
+					].filter(x=>x.url)),
+					lockDescription: "Exclusive for members",
+					unlockUrl: item?.attributes?.url,
+				}));
 			}
 		}
 	}

@@ -11,6 +11,7 @@ mkdir -p $DOCUMENT_ROOT/Patreon
 cp patreon_logo.png $DOCUMENT_ROOT/Patreon
 cp PatreonConfig.json $DOCUMENT_ROOT/Patreon
 cp PatreonScript.js $DOCUMENT_ROOT/Patreon
+sh sign.sh $DOCUMENT_ROOT/Patreon/PatreonScript.js $DOCUMENT_ROOT/Patreon/PatreonConfig.json
 
 # Notify Cloudflare to wipe the CDN cache
 echo "Purging Cloudflare cache for zone $CLOUDFLARE_ZONE_ID..."
