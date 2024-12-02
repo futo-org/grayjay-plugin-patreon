@@ -10,7 +10,7 @@
 	"scriptUrl": "./PatreonScript.js",
 	"version": 16,
 	
-	"iconUrl": "./PatreonIcon.png",
+	"iconUrl": "./patreon_logo.png",
 	"id": "aac9e9f0-24b5-11ee-be56-0242ac120002",
 	
 	"scriptSignature": "",
