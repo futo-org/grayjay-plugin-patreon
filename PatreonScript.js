@@ -116,11 +116,11 @@ source.getChannel = function (url) {
 	const result = new PlatformChannel({
 		id: new PlatformID(config.name, channel?.campaign?.data?.id, config.id, PLATFORM_CLAIMTYPE),
 		name: channel?.campaign?.data?.attributes?.name,
-		description: channel?.campaign?.data?.attributes?.description,
+		description: channel?.campaign?.data?.attributes?.description ?? channel?.campaign?.data?.attributes?.summary,
 		url: channel?.campaign?.data?.attributes?.url,
 		subscribers: channel?.campaign?.data?.attributes?.patron_count,
-		banner: channel?.campaign?.data?.attributes?.image_url ?? channel?.campaign?.data?.attributes?.cover_photo_url,
-		thumbnail: channel?.campaign?.data?.attributes?.avatar_photo_url
+		banner: channel?.campaign?.data?.attributes?.image_url ?? channel?.campaign?.data?.attributes?.cover_photo_url ?? channel?.campaign?.data?.attributes?.cwh_cover_image_urls?.large,
+		thumbnail: channel?.campaign?.data?.attributes?.avatar_photo_url ?? channel?.campaign?.data?.attributes?.avatar_photo_image_urls?.thumbnail
 	});
 
 	_channelCache[url] = result;
@@ -204,15 +204,21 @@ class PatreonCommentPager extends CommentPager {
 		this.contextUrl = url;
 		this.results = this.parseResponse(resp);
 		this.nextPageUrl = nextUrl;
+		this.hasMore = !!nextUrl;
 	}
 
 	nextPage() {
 		const resp = http.GET(this.nextPageUrl, {}, true);
 		if (!resp.isOk)
 			throw new ScriptException("Failed to get next comment page [" + resp.code + "]")
-		this.results = this.parseResponse(JSON.parse(resp.body));
-		this.nextPageUrl = resp?.links?.next;
+
+		const responseBody = JSON.parse(resp.body);
+		this.results = this.parseResponse(responseBody);
+		this.nextPageUrl = responseBody?.links?.next;
+		
 		this.hasMore = !!this.nextPageUrl;
+		
+		return this;
 	}
 
 	parseResponse(resp) {
@@ -228,7 +234,7 @@ class PatreonCommentPager extends CommentPager {
 
 		return new PatreonComment({
 			contextUrl: this.contextUrl,
-			author: new PlatformAuthorLink(new PlatformID(config.platform, comment.id, PLATFORM_CLAIMTYPE), commenter.attributes.full_name, commenter.attributes.url, commenter.attributes.image_url),
+			author: new PlatformAuthorLink(new PlatformID(config.name, comment.id, PLATFORM_CLAIMTYPE), commenter.attributes.full_name, commenter.attributes.url, commenter.attributes.image_url),
 			message: comment.attributes.body,
 			rating: new RatingLikes(comment.attributes.vote_sum),
 			date: parseInt(Date.parse(comment.attributes.created) / 1000),
@@ -362,6 +368,7 @@ function getPosts(campaign, context, nextPage) {
 					}
 					break;
 				case "video_external_file":
+				case "podcast":
 					if (item?.attributes?.post_file)
 						contents.push(new PlatformVideoDetails({
 							id: new PlatformID(config.name, item?.id, config.id),
