@@ -116,11 +116,11 @@ source.getChannel = function (url) {
 	const result = new PlatformChannel({
 		id: new PlatformID(config.name, channel?.campaign?.data?.id, config.id, PLATFORM_CLAIMTYPE),
 		name: channel?.campaign?.data?.attributes?.name,
-		description: channel?.campaign?.data?.attributes?.description,
+		description: channel?.campaign?.data?.attributes?.description ?? channel?.campaign?.data?.attributes?.summary,
 		url: channel?.campaign?.data?.attributes?.url,
 		subscribers: channel?.campaign?.data?.attributes?.patron_count,
-		banner: channel?.campaign?.data?.attributes?.image_url ?? channel?.campaign?.data?.attributes?.cover_photo_url,
-		thumbnail: channel?.campaign?.data?.attributes?.avatar_photo_url
+		banner: channel?.campaign?.data?.attributes?.image_url ?? channel?.campaign?.data?.attributes?.cover_photo_url ?? channel?.campaign?.data?.attributes?.cwh_cover_image_urls?.large,
+		thumbnail: channel?.campaign?.data?.attributes?.avatar_photo_url ?? channel?.campaign?.data?.attributes?.avatar_photo_image_urls?.thumbnail
 	});
 
 	_channelCache[url] = result;
