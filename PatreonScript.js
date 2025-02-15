@@ -362,6 +362,7 @@ function getPosts(campaign, context, nextPage) {
 					}
 					break;
 				case "video_external_file":
+				case "podcast":
 					if (item?.attributes?.post_file)
 						contents.push(new PlatformVideoDetails({
 							id: new PlatformID(config.name, item?.id, config.id),
