@@ -204,15 +204,21 @@ class PatreonCommentPager extends CommentPager {
 		this.contextUrl = url;
 		this.results = this.parseResponse(resp);
 		this.nextPageUrl = nextUrl;
+		this.hasMore = !!nextUrl;
 	}
 
 	nextPage() {
 		const resp = http.GET(this.nextPageUrl, {}, true);
 		if (!resp.isOk)
 			throw new ScriptException("Failed to get next comment page [" + resp.code + "]")
-		this.results = this.parseResponse(JSON.parse(resp.body));
-		this.nextPageUrl = resp?.links?.next;
+
+		const responseBody = JSON.parse(resp.body);
+		this.results = this.parseResponse(responseBody);
+		this.nextPageUrl = responseBody?.links?.next;
+		
 		this.hasMore = !!this.nextPageUrl;
+		
+		return this;
 	}
 
 	parseResponse(resp) {
@@ -228,7 +234,7 @@ class PatreonCommentPager extends CommentPager {
 
 		return new PatreonComment({
 			contextUrl: this.contextUrl,
-			author: new PlatformAuthorLink(new PlatformID(config.platform, comment.id, PLATFORM_CLAIMTYPE), commenter.attributes.full_name, commenter.attributes.url, commenter.attributes.image_url),
+			author: new PlatformAuthorLink(new PlatformID(config.name, comment.id, PLATFORM_CLAIMTYPE), commenter.attributes.full_name, commenter.attributes.url, commenter.attributes.image_url),
 			message: comment.attributes.body,
 			rating: new RatingLikes(comment.attributes.vote_sum),
 			date: parseInt(Date.parse(comment.attributes.created) / 1000),
