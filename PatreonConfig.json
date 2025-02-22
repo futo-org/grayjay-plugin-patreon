@@ -6,7 +6,7 @@
 
 	"platformUrl": "https://patreon.com",
 	"sourceUrl": "https://plugins.grayjay.app/Patreon/PatreonConfig.json",
-	"repositoryUrl": "https://futo.org",
+	"repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/patreon",
 	"scriptUrl": "./PatreonScript.js",
 	"version": 18,
 	
