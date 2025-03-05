@@ -53,9 +53,6 @@ source.getSearchChannelContentsCapabilities = function () {
 		filters: []
 	};
 };
-source.searchChannelContents = function (channelUrl, query, type, order, filters) {
-	throw new ScriptException("This is a sample");
-};
 
 source.searchChannels = function (query) {
 	return new SearchChannelPager(query);
@@ -113,7 +110,13 @@ source.getChannel = function (url) {
 	else
 		channel = JSON.parse(channelJson[1]);
 
-	const result = new PlatformChannel({
+	_channelCache[url] = campaignToPlatformChannel(channel);
+	return _channelCache[url];
+};
+
+function campaignToPlatformChannel(channel) {
+	
+	return new PlatformChannel({
 		id: new PlatformID(config.name, channel?.campaign?.data?.id, config.id, PLATFORM_CLAIMTYPE),
 		name: channel?.campaign?.data?.attributes?.name,
 		description: channel?.campaign?.data?.attributes?.description ?? channel?.campaign?.data?.attributes?.summary,
@@ -121,11 +124,9 @@ source.getChannel = function (url) {
 		subscribers: channel?.campaign?.data?.attributes?.patron_count,
 		banner: channel?.campaign?.data?.attributes?.image_url ?? channel?.campaign?.data?.attributes?.cover_photo_url ?? channel?.campaign?.data?.attributes?.cwh_cover_image_urls?.large,
 		thumbnail: channel?.campaign?.data?.attributes?.avatar_photo_url ?? channel?.campaign?.data?.attributes?.avatar_photo_image_urls?.thumbnail
-	});
+	})
+}
 
-	_channelCache[url] = result;
-	return result;
-};
 source.getChannelContents = function (url) {
 	const channel = (_channelCache[url]) ? _channelCache[url] : source.getChannel(url);
 	_channelCache[url] = channel;
@@ -164,8 +165,18 @@ source.getChannelTemplateByClaimMap = () => {
 source.isContentDetailsUrl = function (url) {
 	return REGEX_URL_ID.test(url);
 };
+
 source.getContentDetails = function (url) {
-	throw new ScriptException("This is a sample");
+    const postId = getPostIdFromUrl(url);
+    const postRes = http.GET(`https://www.patreon.com/api/posts/${postId}`, {}, true);
+
+    if (postRes.isOk) {
+        const postBody = JSON.parse(postRes.body);
+		const campaign = postBody.included.find(a => a.type == 'campaign');
+		const channel = campaignToPlatformChannel({ campaign: { data : campaign }});
+        return parseSinglePost(postBody.data, postBody, channel, true);
+    }
+    throw new ScriptException("Failed to get post details");
 };
 
 //Comments
@@ -276,168 +287,159 @@ source.getUserSubscriptions = function () {
 	})
 }
 
-function getPosts(campaign, context, nextPage) {
-	const dataResp = http.GET((!nextPage) ? BASE_URL_API + "/posts" +
-		"?filter[campaign_id]=" + campaign +
-		"&include=images" +
-		"&filter[contains_exclusive_posts]=true" +
-		"&sort=-published_at" : nextPage, {}, true);
+function parseSinglePost(item, data, context, isDetails=false) {
+    if (!item) return null;
 
-	if (!dataResp.isOk)
-		throw new ScriptException("Failed to get posts");
-	const data = JSON.parse(dataResp.body);
+    const maxDescriptionLength = 500;
 
-	if (IS_TESTING)
-		console.log("getPosts data:", data);
+    if (isDetails) {
+        // Throw unsupported error for PlatformNestedMediaContent or PlatformPostDetails
+        if (item?.attributes?.embed || 
+            item?.attributes?.post_type == 'text_only' ||
+            item?.attributes?.post_type == 'image_file') {
+            throw new UnavailableException("Unsupported content type while deep linking. Consider opening it from inside the channel.");
+        }
+    }
 
+    if (item?.attributes?.embed) {
+        return new PlatformNestedMediaContent({
+            id: new PlatformID(config.name, item.id, config.id),
+            name: item.attributes.title,
+            author: getPlatformAuthorLink(item, context),
+            datetime: (Date.parse(item.attributes.published_at) / 1000),
+            url: item.attributes.url,
+            contentUrl: item?.attributes?.embed?.url,
+            contentName: item?.attributes?.embed?.subject,
+            contentDescription: item?.attributes?.embed?.description,
+            contentProvider: item?.attributes?.embed?.provider,
+            contentThumbnails: new Thumbnails([
+                new Thumbnail(item?.attributes?.thumbnail?.large, 1)
+            ].filter(x => x.url))
+        });
+    }
 
-	const maxDescriptionLength = 500;
-	const contents = [];
-	for (let item of data.data) {
-		if (item?.attributes?.embed)
-			contents.push(new PlatformNestedMediaContent({
-				id: new PlatformID(config.name, item?.id, config.id),
-				name: item?.attributes?.title,
-				author: getPlatformAuthorLink(item, context),
-				datetime: (Date.parse(item?.attributes?.published_at) / 1000),
-				url: item?.attributes?.url,
-				contentUrl: item?.attributes?.embed?.url,
-				contentName: item?.attributes?.embed?.subject,
-				contentDescription: item?.attributes?.embed?.description,
-				contentProvider: item?.attributes?.embed?.provider,
-				contentThumbnails: new Thumbnails([
-					new Thumbnail(item?.attributes?.thumbnail?.large, 1)
-				].filter(x => x.url))
-			}));
-		else if (item?.attributes?.current_user_can_view) {
-			switch (item?.attributes?.post_type) {
-				case "text_only":
-					if (item?.attributes?.content) {
-						let description = item?.attributes?.teaser_text ?? "";
-						if (item.attributes.content) {
-							const text = domParser.parseFromString(item.attributes.content).text;
-							if (text.length > maxDescriptionLength)
-								description = text.substring(0, maxDescriptionLength) + "...";
-							else
-								description = text;
-						}
-						contents.push(new PlatformPostDetails({
-							id: new PlatformID(config.name, item?.id, config.id),
-							name: item?.attributes?.title,
-							author: getPlatformAuthorLink(item, context),
-							datetime: (Date.parse(item?.attributes?.published_at) / 1000),
-							url: item?.attributes?.url,
-							rating: new RatingLikes(item?.attributes?.like_count ?? 0),
-							description: description,
-							textType: Type.Text.HTML,
-							content: item.attributes.content,
-							images: [],
-							thumbnails: [],
-						}));
-					}
-					break;
-				case "image_file":
-					if (item?.attributes?.post_metadata && item.attributes.post_metadata.image_order) {
-						const images = item.attributes.post_metadata.image_order
-							.map(x => data.included?.find(y => y.id == x))
-							.filter(x => x && x.attributes.image_urls);
-						let description = item?.attributes?.teaser_text ?? "";
-						if (item.attributes.content) {
-							const text = domParser.parseFromString(item.attributes.content).text;
-							if (text.length > maxDescriptionLength)
-								description = text.substring(0, maxDescriptionLength) + "...";
-							else
-								description = text;
-						}
+    if (item?.attributes?.current_user_can_view) {
+        switch (item?.attributes?.post_type) {
+            case "text_only": {
+                let description = item?.attributes?.teaser_text ?? "";
+                if (item.attributes.content) {
+                    const text = domParser.parseFromString(item.attributes.content).text;
+                    description = text.length > maxDescriptionLength ? text.substring(0, maxDescriptionLength) + "..." : text;
+                }
+                return new PlatformPostDetails({
+                    id: new PlatformID(config.name, item.id, config.id),
+                    name: item?.attributes?.title,
+                    author: getPlatformAuthorLink(item, context),
+                    datetime: (Date.parse(item?.attributes?.published_at) / 1000),
+                    url: item?.attributes?.url,
+                    rating: new RatingLikes(item?.attributes?.like_count ?? 0),
+                    description,
+                    textType: Type.Text.HTML,
+                    content: item.attributes.content,
+                    images: [],
+                    thumbnails: [],
+                });
+            }
+            case "image_file": {
+                if (!item.attributes.post_metadata?.image_order) return null;
 
-						contents.push(new PlatformPostDetails({
-							id: new PlatformID(config.name, item?.id, config.id),
-							name: item?.attributes?.title,
-							author: getPlatformAuthorLink(item, context),
-							datetime: (Date.parse(item?.attributes?.published_at) / 1000),
-							url: item?.attributes?.url,
-							rating: new RatingLikes(item?.attributes?.like_count),
-							description: description,
-							textType: Type.Text.HTML,
-							content: item.attributes.content,
-							images: images.map(x => x.attributes.image_urls.original),
-							thumbnails: images.map(x => (x.attributes.image_urls.thumbnail) ? new Thumbnails([
-								new Thumbnail(x.attributes.image_urls.thumbnail, 1)
-							]) : null)
-						}));
-					}
-					break;
-				case "video_external_file":
-				case "podcast":
-					if (item?.attributes?.post_file)
-						contents.push(new PlatformVideoDetails({
-							id: new PlatformID(config.name, item?.id, config.id),
-							name: item?.attributes?.title,
-							author: getPlatformAuthorLink(item, context),
-							datetime: (Date.parse(item?.attributes?.published_at) / 1000),
-							url: item?.attributes?.url,
-							duration: item?.attributes?.post_file?.duration,
-							description: item?.attributes?.teaser_text,
-							rating: new RatingLikes(item?.attributes?.like_count),
-							thumbnails: new Thumbnails([
-								new Thumbnail(item?.attributes?.thumbnail?.url, 1)
-							]),
-							video: new VideoSourceDescriptor([
-								new HLSSource({
-									name: "Original",
-									duration: item?.attributes?.post_file?.duration,
-									url: item?.attributes?.post_file?.url
-								})
-							])
-						}));
-					break;
-				case "audio_file":
-					if (item?.attributes?.post_file)
-						contents.push(new PlatformVideoDetails({
-							id: new PlatformID(config.name, item?.id, config.id),
-							name: item?.attributes?.title,
-							author: getPlatformAuthorLink(item, context),
-							datetime: (Date.parse(item?.attributes?.published_at) / 1000),
-							url: item?.attributes?.url,
-							duration: item?.attributes?.post_file?.duration,
-							description: item?.attributes?.teaser_text,
-							rating: new RatingLikes(item?.attributes?.like_count),
-							thumbnails: new Thumbnails([
-								new Thumbnail(item?.attributes?.thumbnail?.url, 1)
-							]),
-							video: new UnMuxVideoSourceDescriptor([], [
-								new AudioUrlSource({
-									name: "Audio",
-									url: item?.attributes?.post_file?.url,
-									duration: item?.attributes?.post_file?.duration
-								})
-							])
-						}));
-					break;
-			}
-		}
-		else {
-			if (!_settings?.hideUnpaidContent) {
-				contents.push(new PlatformLockedContent({
-					id: new PlatformID(config.name, item?.id, config.id),
-					name: item?.attributes?.title,
-					author: getPlatformAuthorLink(item, context),
-					datetime: (Date.parse(item?.attributes?.published_at) / 1000),
-					url: item?.attributes?.url,
-					contentName: item?.attributes?.embed?.subject,
-					contentThumbnails: new Thumbnails([
-						new Thumbnail(item?.attributes?.thumbnail?.large ?? item?.attributes?.image?.thumb_url, 1)
-					].filter(x => x.url)),
-					lockDescription: "Exclusive for members",
-					unlockUrl: item?.attributes?.url,
-				}));
-			}
-		}
-	}
-	return {
-		results: contents.filter(x => x != null),
-		nextPage: data?.links?.next
-	};
+                const images = item.attributes.post_metadata.image_order
+                    .map(x => data.included?.find(y => y.id == x))
+                    .filter(x => x && x.attributes.image_urls);
+
+                let description = item?.attributes?.teaser_text ?? "";
+                if (item.attributes.content) {
+                    const text = domParser.parseFromString(item.attributes.content).text;
+                    description = text.length > maxDescriptionLength ? text.substring(0, maxDescriptionLength) + "..." : text;
+                }
+
+                return new PlatformPostDetails({
+                    id: new PlatformID(config.name, item.id, config.id),
+                    name: item?.attributes?.title,
+                    author: getPlatformAuthorLink(item, context),
+                    datetime: (Date.parse(item?.attributes?.published_at) / 1000),
+                    url: item?.attributes?.url,
+                    rating: new RatingLikes(item?.attributes?.like_count),
+                    description,
+                    textType: Type.Text.HTML,
+                    content: item.attributes.content,
+                    images: images.map(x => x.attributes.image_urls.original),
+                    thumbnails: images.map(x => x.attributes.image_urls.thumbnail ? new Thumbnails([
+                        new Thumbnail(x.attributes.image_urls.thumbnail, 1)
+                    ]) : null)
+                });
+            }
+            case "video_external_file":
+            case "podcast": {
+                if (!item?.attributes?.post_file) return null;
+
+                return new PlatformVideoDetails({
+                    id: new PlatformID(config.name, item?.id, config.id),
+                    name: item?.attributes?.title,
+                    author: getPlatformAuthorLink(item, context),
+                    datetime: (Date.parse(item?.attributes?.published_at) / 1000),
+                    url: item?.attributes?.url,
+                    duration: item?.attributes?.post_file?.duration,
+                    description: item?.attributes?.teaser_text,
+                    rating: new RatingLikes(item?.attributes?.like_count),
+                    thumbnails: new Thumbnails([
+                        new Thumbnail(item?.attributes?.thumbnail?.url, 1)
+                    ]),
+                    video: new VideoSourceDescriptor([
+                        new HLSSource({
+                            name: "Original",
+                            duration: item?.attributes?.post_file?.duration,
+                            url: item?.attributes?.post_file?.url
+                        })
+                    ])
+                });
+            }
+            case "audio_file": {
+                if (!item?.attributes?.post_file) return null;
+
+                return new PlatformVideoDetails({
+                    id: new PlatformID(config.name, item?.id, config.id),
+                    name: item?.attributes?.title,
+                    author: getPlatformAuthorLink(item, context),
+                    datetime: (Date.parse(item?.attributes?.published_at) / 1000),
+                    url: item?.attributes?.url,
+                    duration: item?.attributes?.post_file?.duration,
+                    description: item?.attributes?.teaser_text,
+                    rating: new RatingLikes(item?.attributes?.like_count),
+                    thumbnails: new Thumbnails([
+                        new Thumbnail(item?.attributes?.thumbnail?.url, 1)
+                    ]),
+                    video: new UnMuxVideoSourceDescriptor([], [
+                        new AudioUrlSource({
+                            name: "Audio",
+                            url: item?.attributes?.post_file?.url,
+                            duration: item?.attributes?.post_file?.duration
+                        })
+                    ])
+                });
+            }
+        }
+    } else {
+        if (isDetails) {
+            throw new UnavailableException("Exclusive for members");
+        }
+        else if (!_settings?.hideUnpaidContent) {
+            return new PlatformLockedContent({
+                id: new PlatformID(config.name, item?.id, config.id),
+                name: item?.attributes?.title,
+                author: getPlatformAuthorLink(item, context),
+                datetime: (Date.parse(item?.attributes?.published_at) / 1000),
+                url: item?.attributes?.url,
+                contentName: item?.attributes?.embed?.subject,
+                contentThumbnails: new Thumbnails([
+                    new Thumbnail(item?.attributes?.thumbnail?.large ?? item?.attributes?.image?.thumb_url, 1)
+                ].filter(x => x.url)),
+                lockDescription: "Exclusive for members",
+                unlockUrl: item?.attributes?.url,
+            });
+        }
+    }
+    return null;
 }
 
 function getPlatformAuthorLink(item, context) {
@@ -471,5 +473,35 @@ function searchChannels(query, page) {
 
 	return channels.filter(x => x != null);
 }
+
+function getPostIdFromUrl(url) {
+	const match = url.match(/\/posts\/(?:[\w-]+-)?(\d+)/);
+    return match ? match[1] : null;
+}
+
+function getPosts(campaign, context, nextPage) {
+    const dataResp = http.GET((!nextPage) ? BASE_URL_API + "/posts" +
+        "?filter[campaign_id]=" + campaign +
+        "&include=images" +
+        "&filter[contains_exclusive_posts]=true" +
+        "&sort=-published_at" : nextPage, {}, true);
+
+    if (!dataResp.isOk)
+        throw new ScriptException("Failed to get posts");
+    
+    const data = JSON.parse(dataResp.body);
+
+    if (IS_TESTING)
+        console.log("getPosts data:", data);
+
+    const contents = data.data
+		.map(item => parseSinglePost(item, data, context))
+		.filter(Boolean);
+
+    return {
+        results: contents,
+        nextPage: data?.links?.next
+    };
+} 
 
 console.log("LOADED");
