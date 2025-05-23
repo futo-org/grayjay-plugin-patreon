@@ -293,6 +293,14 @@ function getPosts(campaign, context, nextPage) {
 
 	const maxDescriptionLength = 500;
 	const contents = [];
+
+	const requestModifier = {
+		headers: {
+			"Referer": "https://www.patreon.com/",
+			"Origin": "https://www.patreon.com"
+		}
+	}
+
 	for (let item of data.data) {
 		if (item?.attributes?.embed)
 			contents.push(new PlatformNestedMediaContent({
@@ -386,7 +394,8 @@ function getPosts(campaign, context, nextPage) {
 								new HLSSource({
 									name: "Original",
 									duration: item?.attributes?.post_file?.duration,
-									url: item?.attributes?.post_file?.url
+									url: item?.attributes?.post_file?.url,
+									requestModifier
 								})
 							])
 						}));
@@ -409,7 +418,8 @@ function getPosts(campaign, context, nextPage) {
 								new AudioUrlSource({
 									name: "Audio",
 									url: item?.attributes?.post_file?.url,
-									duration: item?.attributes?.post_file?.duration
+									duration: item?.attributes?.post_file?.duration,
+									requestModifier
 								})
 							])
 						}));
