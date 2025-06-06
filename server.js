@@ -13,7 +13,7 @@ const files = {
         type: "application/json",
     },
     "/PatreonIcon.png": {
-        content: await readFile("PatreonIcon.png"),
+        content: await readFile("patreon_logo.png"),
         type: "image/png",
     },
 };
