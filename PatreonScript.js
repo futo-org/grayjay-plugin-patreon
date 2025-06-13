@@ -58,7 +58,7 @@ source.getSearchCapabilities = () => {
 	};
 };
 source.search = function (query, type, order, filters) {
-	return new ContentPager([].false);
+	return new ContentPager([], false);
 };
 source.getSearchChannelContentsCapabilities = function () {
 	return {
@@ -66,9 +66,6 @@ source.getSearchChannelContentsCapabilities = function () {
 		sorts: [Type.Order.Chronological],
 		filters: []
 	};
-};
-source.searchChannelContents = function (channelUrl, query, type, order, filters) {
-	throw new ScriptException("This is a sample");
 };
 
 source.searchChannels = function (query) {
