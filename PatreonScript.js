@@ -146,18 +146,8 @@ source.getChannel = function (url) {
 	else
 		channel = JSON.parse(channelJson[1]);
 
-	const result = new PlatformChannel({
-		id: new PlatformID(config.name, channel?.campaign?.data?.id, config.id, PLATFORM_CLAIMTYPE),
-		name: channel?.campaign?.data?.attributes?.name,
-		description: channel?.campaign?.data?.attributes?.description ?? channel?.campaign?.data?.attributes?.summary,
-		url: channel?.campaign?.data?.attributes?.url,
-		subscribers: channel?.campaign?.data?.attributes?.patron_count,
-		banner: channel?.campaign?.data?.attributes?.image_url ?? channel?.campaign?.data?.attributes?.cover_photo_url ?? channel?.campaign?.data?.attributes?.cwh_cover_image_urls?.large,
-		thumbnail: channel?.campaign?.data?.attributes?.avatar_photo_url ?? channel?.campaign?.data?.attributes?.avatar_photo_image_urls?.thumbnail
-	});
-
-	_channelCache[url] = result;
-	return result;
+	_channelCache[url] = campaignToPlatformChannel(channel);
+	return _channelCache[url];
 };
 source.getChannelContents = function (url) {
 	const channel = (_channelCache[url]) ? _channelCache[url] : source.getChannel(url);
@@ -197,8 +187,18 @@ source.getChannelTemplateByClaimMap = () => {
 source.isContentDetailsUrl = function (url) {
 	return REGEX_URL_ID.test(url);
 };
+
 source.getContentDetails = function (url) {
-	throw new ScriptException("This is a sample");
+    const postId = getPostIdFromUrl(url);
+    const postRes = http.GET(`https://www.patreon.com/api/posts/${postId}`, {}, true);
+
+    if (postRes.isOk) {
+        const postBody = JSON.parse(postRes.body);
+		const campaign = postBody.included.find(a => a.type == 'campaign');
+		const channel = campaignToPlatformChannel({ campaign: { data : campaign }});
+        return parseSinglePost(postBody.data, postBody, channel, true);
+    }
+    throw new ScriptException("Failed to get post details");
 };
 
 //Comments
@@ -324,14 +324,42 @@ function getPosts(campaign, context, nextPage) {
 		console.log("getPosts data:", data);
 
 	// Map all posts to Platform content using the reusable mapping functions
-	const contents = data.data
-		.map(post => mapPostToPlatformContent(post, context, data))
-		.filter(content => content != null);
+	const contents = data?.data
+		?.map(post => mapPostToPlatformContent(post, context, data))
+		?.filter(content => content != null) ?? [];
 
 	return {
 		results: contents,
 		nextPage: data?.links?.next
 	};
+}
+
+function campaignToPlatformChannel(channel) {
+	
+	return new PlatformChannel({
+		id: new PlatformID(config.name, channel?.campaign?.data?.id, config.id, PLATFORM_CLAIMTYPE),
+		name: channel?.campaign?.data?.attributes?.name,
+		description: channel?.campaign?.data?.attributes?.description ?? channel?.campaign?.data?.attributes?.summary,
+		url: channel?.campaign?.data?.attributes?.url,
+		subscribers: channel?.campaign?.data?.attributes?.patron_count,
+		banner: channel?.campaign?.data?.attributes?.image_url ?? channel?.campaign?.data?.attributes?.cover_photo_url ?? channel?.campaign?.data?.attributes?.cwh_cover_image_urls?.large,
+		thumbnail: channel?.campaign?.data?.attributes?.avatar_photo_url ?? channel?.campaign?.data?.attributes?.avatar_photo_image_urls?.thumbnail
+	})
+}
+
+function parseSinglePost(item, data, context, isDetails=false) {
+    if (!item) return null;
+
+    if (isDetails) {
+        // Throw unsupported error for PlatformNestedMediaContent or PlatformPostDetails
+        if (item?.attributes?.embed || 
+            item?.attributes?.post_type == 'text_only' ||
+            item?.attributes?.post_type == 'image_file') {
+            throw new UnavailableException("Unsupported content type while deep linking. Consider opening it from inside the channel.");
+        }
+    }
+
+    return mapPostToPlatformContent(item, context, data);
 }
 
 
@@ -358,6 +386,12 @@ function searchChannels(query, page) {
 
 	return channels.filter(x => x != null);
 }
+
+function getPostIdFromUrl(url) {
+	const match = url.match(/\/posts\/(?:[\w-]+-)?(\d+)/);
+    return match ? match[1] : null;
+}
+
 
 // Function to get home content from launcher/cards API
 function getHomeContent(url) {
