@@ -13,6 +13,7 @@ const REGEX_CHANNEL_DETAILS = /Object\.assign\(window\.patreon\.bootstrap, ({.*?
 const REGEX_CHANNEL_DETAILS2 = /window\.patreon = ({.*?});/s
 const REGEX_CHANNEL_DETAILS3 = /id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s
 const REGEX_CHANNEL_URL = /https:\/\/(?:www\.)?patreon.com\/(.+)/s
+const REGEX_PROFILE_CREATORS_URL = /https:\/\/(?:www\.)?patreon.com\/profile\/creators\?u=(\d+)/s
 
 const REGEX_MEMBERSHIPS = /<ul aria-label="Memberships".*?>(.*?)<\/ul>/s
 const REGEX_MEMBERSHIPS_URLS = /<a href="(.*?)"/g
@@ -111,13 +112,71 @@ class HomePager extends ContentPager {
 source.isChannelUrl = function (url) {
 	return REGEX_CHANNEL_URL.test(url);
 };
+
+// Function to get channel information from user ID (for profile/creators URLs)
+function getChannelFromUserId(userId, originalUrl) {
+	// First, try to get user information from the API
+	const userApiUrl = BASE_URL_API + "/user/" + userId + "?include=campaign";
+	const userResp = http.GET(userApiUrl, {}, true);
+
+	if (userResp.isOk) {
+		const userData = JSON.parse(userResp.body);
+
+		// Check if user has a campaign (is a creator) via relationships
+		if (userData.data && userData.data.relationships && userData.data.relationships.campaign) {
+			const campaignId = userData.data.relationships.campaign.data.id;
+			const campaign = userData.included?.find(item => item.type === 'campaign' && item.id === campaignId);
+
+			if (campaign) {
+				const channel = campaignToPlatformChannel({ campaign: { data: campaign }});
+				_channelCache[originalUrl] = channel;
+				return channel;
+			}
+		}
+
+		// If we have user data, create a basic channel from the user information
+		if (userData.data && userData.data.attributes) {
+			const userAttrs = userData.data.attributes;
+
+			// Create a minimal channel object from user data
+			const basicChannel = {
+				campaign: {
+					data: {
+						id: userId, // Use user ID as campaign ID
+						attributes: {
+							name: userAttrs.full_name || userAttrs.vanity || "Unknown Creator",
+							description: userAttrs.about || "",
+							url: userAttrs.url || (BASE_URL + "/" + userAttrs.vanity),
+							patron_count: 0, // We don't have this info
+							avatar_photo_url: userAttrs.image_url || userAttrs.thumb_url,
+							image_url: userAttrs.image_url || userAttrs.thumb_url
+						}
+					}
+				}
+			};
+
+			const channel = campaignToPlatformChannel(basicChannel);
+			
+			_channelCache[originalUrl] = channel;
+			return channel;
+		}
+	}
+
+	throw new ScriptException("Failed to get channel from user ID: " + userId);
+}
 source.getChannel = function (url) {
+	// Check if this is a profile/creators URL and handle it specially
+	const profileMatch = REGEX_PROFILE_CREATORS_URL.exec(url);
+	if (profileMatch && profileMatch.length === 2) {
+		const userId = profileMatch[1];
+		return getChannelFromUserId(userId, url);
+	}
+
 	const channelResp = http.GET(url, {}, false);
 	if (!channelResp.isOk)
 		throw new ScriptException("Failed to get channel");
 
 	let channelJson = REGEX_CHANNEL_DETAILS.exec(channelResp.body);
-
 	let channel = null;
 	if (!channelJson || channelJson.length != 2) {
 		channelJson = REGEX_CHANNEL_DETAILS2.exec(channelResp.body);
@@ -317,7 +376,15 @@ function getPosts(campaign, context, nextPage) {
 		"&sort=-published_at" : nextPage, {}, true);
 
 	if (!dataResp.isOk)
-		throw new ScriptException("Failed to get posts");
+	{
+		log("Failed to get posts [" + dataResp.code + "]");
+		return {
+			results: [],
+			nextPage: null,
+			hasMore: false
+		}
+	}
+	
 	const data = JSON.parse(dataResp.body);
 
 	if (IS_TESTING)
