@@ -178,7 +178,7 @@ source.getChannelTemplateByClaimMap = () => {
 	return {
 		//Patreon
 		12: {
-			0: URL_BASE + "/{{CLAIMVALUE}}"
+			0: BASE_URL + "/{{CLAIMVALUE}}"
 		}
 	};
 };
