@@ -20,7 +20,7 @@ const REGEX_MEMBERSHIPS_URLS = /<a href="(.*?)"/g
 const REGEX_URL_ID = /https:\/\/(?:www\.)?patreon.com\/posts\/.*-(.*)\/?/s
 
 // Common request modifier for all Patreon requests
-const PATREON_REQUEST_MODIFIER = {
+let PATREON_REQUEST_MODIFIER = {
 	headers: {
 		"Referer": "https://www.patreon.com/",
 		"Origin": "https://www.patreon.com"
@@ -38,11 +38,20 @@ source.enable = function (conf, settings, savedState) {
 	config = conf ?? {};
 	_settings = settings ?? {};
 
+	PATREON_REQUEST_MODIFIER.headers["User-Agent"] = config.authentication.userAgent;
+
 }
 source.getHome = function () {
 
 	if (!bridge.isLoggedIn()) {
 		return new ContentPager([], false);
+	}
+
+	const baseResp = http.GET(BASE_URL, PATREON_REQUEST_MODIFIER.headers, false);
+	if (!baseResp.isOk)
+	{
+		throwIfCaptcha(baseResp);
+		throw new ScriptException("Failed to get channel");
 	}
 	
 	return new HomePager();
@@ -172,9 +181,12 @@ source.getChannel = function (url) {
 		return getChannelFromUserId(userId, url);
 	}
 
-	const channelResp = http.GET(url, {}, false);
+	const channelResp = http.GET(url, PATREON_REQUEST_MODIFIER.headers, false);
 	if (!channelResp.isOk)
+	{
+		throwIfCaptcha(channelResp);
 		throw new ScriptException("Failed to get channel");
+	}
 
 	let channelJson = REGEX_CHANNEL_DETAILS.exec(channelResp.body);
 	let channel = null;
@@ -249,7 +261,7 @@ source.isContentDetailsUrl = function (url) {
 
 source.getContentDetails = function (url) {
     const postId = getPostIdFromUrl(url);
-    const postRes = http.GET(`https://www.patreon.com/api/posts/${postId}`, {}, true);
+    const postRes = http.GET(`https://www.patreon.com/api/posts/${postId}`, PATREON_REQUEST_MODIFIER.headers, true);
 
     if (postRes.isOk) {
         const postBody = JSON.parse(postRes.body);
@@ -373,11 +385,14 @@ function getPosts(campaign, context, nextPage) {
 		"?filter[campaign_id]=" + campaign +
 		"&include=images" +
 		"&filter[contains_exclusive_posts]=true" +
-		"&sort=-published_at" : nextPage, {}, true);
+		"&sort=-published_at" : nextPage, PATREON_REQUEST_MODIFIER.headers, true);
+
+	throwIfCaptcha(dataResp);
 
 	if (!dataResp.isOk)
 	{
 		log("Failed to get posts [" + dataResp.code + "]");
+
 		return {
 			results: [],
 			nextPage: null,
@@ -803,6 +818,19 @@ function createIncludedLookupMap(includedData) {
 		}
 	}
 	return map;
+}
+
+function throwIfCaptcha(resp) {
+    if (resp != null && resp.body != null) {
+        // Check for common captcha indicators in the response
+        const body = resp.body.toLowerCase();
+
+        // Check for Cloudflare captcha
+        if (body.includes('/cdn-cgi/challenge-platform')) {
+            throw new CaptchaRequiredException(resp.url, resp.body);
+        }
+    }
+    return true;
 }
 
 
