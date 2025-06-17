@@ -387,11 +387,11 @@ function getPosts(campaign, context, nextPage) {
 		"&filter[contains_exclusive_posts]=true" +
 		"&sort=-published_at" : nextPage, PATREON_REQUEST_MODIFIER.headers, true);
 
-	throwIfCaptcha(dataResp);
-
 	if (!dataResp.isOk)
 	{
 		log("Failed to get posts [" + dataResp.code + "]");
+
+		throwIfCaptcha(dataResp);
 
 		return {
 			results: [],
@@ -821,11 +821,11 @@ function createIncludedLookupMap(includedData) {
 }
 
 function throwIfCaptcha(resp) {
-    if (resp != null && resp.body != null) {
-        // Check for common captcha indicators in the response
+    if (resp != null && resp.body != null && resp.code == 403) {
+
         const body = resp.body.toLowerCase();
 
-        // Check for Cloudflare captcha
+		// Check for Cloudflare captcha
         if (body.includes('/cdn-cgi/challenge-platform')) {
             throw new CaptchaRequiredException(resp.url, resp.body);
         }
