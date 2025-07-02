@@ -122,6 +122,68 @@ source.isChannelUrl = function (url) {
 	return REGEX_CHANNEL_URL.test(url);
 };
 
+// Function to get channel information from vanity URL
+function getChannelFromVanityUrl(url, htmlContent) {
+	// First, try to extract campaign ID from HTML content
+	let campaignId = null;
+	
+	if (htmlContent) {
+		// Look for campaign ID in various places in the HTML
+		const campaignIdPatterns = [
+			/campaign\/(\d+)/g,
+			/p\/campaign\/(\d+)/g,
+			/campaign_id['":\s]*(\d+)/g,
+			/"id":\s*"?(\d+)"?[,}]/g
+		];
+		
+		for (const pattern of campaignIdPatterns) {
+			let match;
+			while ((match = pattern.exec(htmlContent)) !== null) {
+				// Look for IDs that are likely campaign IDs (8+ digits)
+				if (match[1] && match[1].length >= 7) {
+					campaignId = match[1];
+					break;
+				}
+			}
+			if (campaignId) break;
+		}
+	}
+	
+	if (campaignId) {
+		// Try to get campaign data via campaigns API
+		const apiUrl = BASE_URL_API + "/campaigns/" + campaignId + "?include=creator";
+		const apiResp = http.GET(apiUrl, PATREON_REQUEST_MODIFIER.headers, true);
+		
+		if (apiResp.isOk) {
+			const apiData = JSON.parse(apiResp.body);
+			if (apiData.data && apiData.data.attributes) {
+				// Convert API response to expected format
+				const channel = {
+					campaign: {
+						data: {
+							id: apiData.data.id,
+							attributes: {
+								name: apiData.data.attributes.name,
+								description: apiData.data.attributes.description || apiData.data.attributes.summary,
+								url: apiData.data.attributes.url,
+								patron_count: apiData.data.attributes.patron_count,
+								avatar_photo_url: apiData.data.attributes.avatar_photo_url,
+								image_url: apiData.data.attributes.image_url || apiData.data.attributes.cover_photo_url
+							}
+						}
+					}
+				};
+				
+				const platformChannel = campaignToPlatformChannel(channel);
+				_channelCache[url] = platformChannel;
+				return platformChannel;
+			}
+		}
+	}
+	
+	throw new ScriptException("Failed to get channel from HTML content. Campaign ID not found or API call failed.");
+}
+
 // Function to get channel information from user ID (for profile/creators URLs)
 function getChannelFromUserId(userId, originalUrl) {
 	// First, try to get user information from the API
@@ -210,8 +272,10 @@ source.getChannel = function (url) {
 				if (!channel)
 					throw new ScriptException("Failed to parse channel");
 			}
-			else
-				throw new ScriptException("Failed to extract channel");
+			else {
+				// Try API approach
+				return getChannelFromVanityUrl(url, channelResp.body);
+			}
 		}
 	}
 	else
